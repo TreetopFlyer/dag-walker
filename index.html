@@ -1,0 +1,97 @@
+<script>
+var N = {
+    Create:(inMeta, ...inChildren)=>
+    {
+        var output = {
+            Meta:inMeta,
+
+            Children:[],
+            Parents:[],
+            WalkID:0,
+
+            edited:[],
+            editing:[]
+        };
+        inChildren.forEach( inChild => N.Connect(output, inChild) );
+        return output;
+    },
+    Connect:(inParent, inChild)=>
+    {
+        inParent.Children.push(inChild);
+        inChild.Parents.push(inParent);
+    },
+    Walk:(inNode, inKey, inIterator, inWalkID) =>
+    {
+        let array = inNode[inKey];
+        for(let i=0; i<array.length; i++)
+        {
+            let next = array[i];
+            if(next.WalkID == inWalkID)
+            {
+                // weve already been here this walk
+            }
+            else
+            {
+                next.WalkID = inWalkID;
+                let results = inIterator(next);
+                if(results !== false)
+                {
+                    N.Walk(next, inKey, inIterator, inWalkID);
+                }
+                else
+                {
+                    // quit code returned
+                }
+            }
+        }
+    },
+    WalkChildren:(inNode, inIterator, inWalkID) =>
+    {
+        N.Walk(inNode, "Children", inIterator, inWalkID);
+    },
+    WalkParents:(inNode, inIterator, inWalkID) =>
+    {
+        N.Walk(inNode, "Parents", inIterator, inWalkID);
+    }
+};
+</script>
+<script>
+let tree1 = N.Create("root1",
+    N.Create("branch1", 
+        N.Create("leaf1"),
+        N.Create("leaf2"),
+        N.Create("leaf3"),
+    ),
+    N.Create("branch2",
+        N.Create("leaft3"),
+        N.Create("leaft4")
+    )
+);
+
+let leaves = [];
+let leavesCollect = n=>
+{
+    if(n.Children.length == 0)
+    {
+        leaves.push(n);
+    }
+};
+N.WalkChildren(tree1, leavesCollect, 1);
+
+let tree2 = N.Create("root2", 
+    N.Create("branch3",
+        N.Create("leaf5"),
+        N.Create("leaf6")
+    ),
+    N.Create("branch4", ...leaves)
+);
+
+let echo = n=>console.log(n.Meta, n.WalkID);
+
+//N.WalkChildren(tree1, echo, 2);
+//N.WalkChildren(tree2, echo, 3);
+
+let orchard = N.Create("orchard", tree1, tree2);
+N.WalkParents(leaves[0], echo, 4);
+
+</script>
