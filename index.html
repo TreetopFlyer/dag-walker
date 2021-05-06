@@ -12,10 +12,10 @@ var N = {
             edited:[],
             editing:[]
         };
-        inChildren.forEach( inChild => N.Connect(output, inChild) );
+        inChildren.forEach( inChild => N.ConnectChild(output, inChild) );
         return output;
     },
-    Connect:(inParent, inChild)=>
+    ConnectChild:(inParent, inChild)=>
     {
         inParent.Children.push(inChild);
         inChild.Parents.push(inParent);
@@ -26,11 +26,7 @@ var N = {
         for(let i=0; i<array.length; i++)
         {
             let next = array[i];
-            if(next.WalkID == inWalkID)
-            {
-                // weve already been here this walk
-            }
-            else
+            if(next.WalkID !== inWalkID)
             {
                 next.WalkID = inWalkID;
                 let results = inIterator(next);
@@ -38,21 +34,11 @@ var N = {
                 {
                     N.Walk(next, inKey, inIterator, inWalkID);
                 }
-                else
-                {
-                    // quit code returned
-                }
             }
         }
     },
-    WalkChildren:(inNode, inIterator, inWalkID) =>
-    {
-        N.Walk(inNode, "Children", inIterator, inWalkID);
-    },
-    WalkParents:(inNode, inIterator, inWalkID) =>
-    {
-        N.Walk(inNode, "Parents", inIterator, inWalkID);
-    }
+    WalkChildren:(inNode, inIterator, inWalkID) => N.Walk(inNode, "Children", inIterator, inWalkID),
+    WalkParents :(inNode, inIterator, inWalkID) => N.Walk(inNode, "Parents",  inIterator, inWalkID)
 };
 </script>
 <script>
@@ -86,12 +72,49 @@ let tree2 = N.Create("root2",
     N.Create("branch4", ...leaves)
 );
 
-let echo = n=>console.log(n.Meta, n.WalkID);
-
-//N.WalkChildren(tree1, echo, 2);
-//N.WalkChildren(tree2, echo, 3);
-
 let orchard = N.Create("orchard", tree1, tree2);
-N.WalkParents(leaves[0], echo, 4);
 
+
+/*************************************************************/
+
+// phase 0, start node
+let modified = tree1;
+
+// phase 1, walk up and flag additions
+let additionNodes = [];
+let additionGather = n =>
+{
+    additionNodes.push(n);
+};
+
+// phase 2 walk down and flag multiply, also collect leaves
+let multiplyNodes = [];
+let multiplyLeaves = [];
+let multiplyGather = n =>
+{
+    multiplyNodes.push(n)
+    n.Children.length == 0 ?  multiplyLeaves.push(n) : null;
+};
+
+// phase 3 walk up from leaves and flag additions
+// (re-uses phase 1)
+
+///////////////////////
+
+// phase 0
+modified.WalkID = "add-1";
+
+//phase 1
+N.Walk(modified, "Parents", additionGather, modified.WalkID);
+
+//phase 2
+N.Walk(modified, "Children", multiplyGather, modified.WalkID);
+
+//phase 3
+multiplyLeaves.forEach(leaf=>{
+    N.Walk(leaf, "Parents", additionGather, modified.WalkID);
+});
+
+console.log(additionNodes);
+console.log(multiplyNodes);
 </script>
