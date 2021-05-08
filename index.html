@@ -9,10 +9,13 @@ var N = {
             Parents:[],
             WalkID:0,
 
-            RecieveAddition:[],
-            RecieveMultiplication:[],
-            GiveAddition:[],
-            GiveMultiplication:[]
+            GetUpward:[],
+            GetDownward:[],
+            GetOutside:[],
+
+            SetUpward:[],
+            SetDownward:[],
+            SetOutside:[]
         };
         inChildren.forEach( inChild => N.Connect(output, "Children", inChild, "Parents") );
         return output;
@@ -24,7 +27,12 @@ var N = {
     },
     Disconnect:(inParent, inParentRefs, inChild, inChildRefs) =>
     {
-        //inParent[inParentRefs]
+        let checkRemove = (inArray, inMember) =>
+        {
+            inArray.findIndex( (inMember, inIndex, inArray) => (inMember === match) ? inArray.splice(inIndex, 1) : false );
+        };
+        checkRemove(inParent[inParentRefs], inChild);
+        checkRemove(inChild[inChildRefs], inParent);
     },
     Walk:(inNode, inKey, inIterator, inWalkID) =>
     {
@@ -43,21 +51,23 @@ var N = {
             }
         }
     },
-    Modify(inNode, inAmount)
+    Modify(inNode)
     {
         inNode.WalkID = "tweak-"+Math.random();
 
         let leaves = [];
-        let gatherAddition = n => N.Connect(inNode, "GiveAddition", n, "RecieveAddition");
-        let gatherMultiply = n =>
+        let gatherUp = n => N.Connect(inNode, "SetUpward", n, "GetUpward");
+        let gatherDown = n =>
         {
-            N.Connect(inNode, "GiveMultiplication", n, "RecieveMultiplication");
+            N.Connect(inNode, "SetDownward", n, "GetDownward");
             n.Children.length == 0 ?  leaves.push(n) : null;
         };
+        let gatherOut = n => N.Connect(inNode, "SetOutside", n, "GetOutside");
 
-        N.Walk(inNode, "Parents", gatherAddition, inNode.WalkID);
-        N.Walk(inNode, "Children", gatherMultiply, inNode.WalkID);
-        leaves.forEach(leaf=>N.Walk(leaf, "Parents", gatherAddition, inNode.WalkID));
+        N.Walk(inNode, "Parents", gatherUp, inNode.WalkID);
+        N.Connect(inNode, "SetDownward", inNode, "GetDownward");
+        N.Walk(inNode, "Children", gatherDown, inNode.WalkID);
+        leaves.forEach(leaf=>N.Walk(leaf, "Parents", gatherOut, inNode.WalkID));
     }
 };
 </script>
