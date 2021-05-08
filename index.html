@@ -1,4 +1,8 @@
-<script>
+<div id="app"></div>
+<script type="module">
+
+import { h, Component, render } from 'https://unpkg.com/preact?module';
+
 var N = {
     Create:(inMeta, ...inChildren) =>
     {
@@ -75,33 +79,6 @@ var N = {
     // create pivot
     // delete pivot
 };
-</script>
-
-<script>
-
-
-
-Subdivide = (inNode, inColumnIndex, inSumIndicies) =>
-{
-    let uniques = {};
-    inNode.Meta.Rows.forEach((inRow)=>
-    {
-        let value = inRow[inColumnIndex];
-        let match = uniques[value];
-        if(!match)
-        {
-            match = uniques[value] = {Sum:[...inRow], Rows:[]};
-            N.Connect(inNode, "Children", N.Create(match), "Parents");
-        }
-        else
-        {
-            inSumIndicies.forEach(inIndex => match.Sum[inIndex] += inRow[inIndex]);
-        }
-        match.Rows.push(inRow);
-    });
-    return inNode;
-};
-
 
 let Leafify = inRows => inRows.map(r => N.Create({Row:r}));
 let Pivot = (inParent, inColumnIndicies, inSumIndicies, inDepth) =>
@@ -109,61 +86,85 @@ let Pivot = (inParent, inColumnIndicies, inSumIndicies, inDepth) =>
     let depth = inDepth||0;
     let uniques = {};
     let columnIndex = inColumnIndicies[depth];
+    
     inParent.Meta.Leaves.forEach((inLeaf)=>
     {
-        try{
-            let row = inLeaf.Meta.Row;
-            let value = row[columnIndex];
-            let match = uniques[value];
-            if(!match)
-            {
-                match = uniques[value] = {_:value, Row:[...row], Leaves:[]};
-                N.Connect(inParent, "Children", N.Create(match), "Parents");
-            }
-            else
-            {
-                inSumIndicies.forEach(inIndex => match.Row[inIndex] += row[inIndex]);
-            }
-            match.Leaves.push(inLeaf);
-        }
-        catch(e)
+        let row = inLeaf.Meta.Row;
+        let value = row[columnIndex];
+        let match = uniques[value];
+        if(!match)
         {
-            console.log(e);
+            match = uniques[value] = {Label:value, Row:[...row], Leaves:[]};
+            N.Connect(inParent, "Children", N.Create(match), "Parents");
         }
+        else
+        {
+            inSumIndicies.forEach(inIndex => match.Row[inIndex] += row[inIndex]);
+        }
+        match.Leaves.push(inLeaf);
     });
 
-    //delete inParent.Meta.Leaves;
+    delete inParent.Meta.Leaves;
     if(depth == inColumnIndicies.length-1)
     {
         // cant go any deeper
         inParent.Children.forEach( inChild =>
         {
-            inChild.Meta.Leaves.forEach( inLeaf =>
-            {
-                N.Connect(inChild, "Children", inLeaf, "Parents");
-            });
+            inChild.Meta.Leaves.forEach( inLeaf => N.Connect(inChild, "Children", inLeaf, "Parents") );
+            delete inChild.Meta.Leaves;
         });
     }
     else
     {
-        inParent.Children.forEach( child =>
-        {
-            Pivot(child, inColumnIndicies, inSumIndicies, depth+1);
-        });
+        inParent.Children.forEach( child => Pivot(child, inColumnIndicies, inSumIndicies, depth+1) );
     }
 };
 let csv = Leafify([
-    ["a", "long",  1],
-    ["b", "long",  2],
-    ["b", "short",  2],
-    ["a", "long",  3],
-    ["b", "short", 1],
-    ["a", "short", 0],
-    ["b", "short", 7],
+    ["#1", "a", "long",  1],
+    ["#2", "b", "long",  2],
+    ["#3", "b", "short", 2],
+    ["#4", "a", "long",  3],
+    ["#5", "b", "short", 1],
+    ["#6", "a", "short", 0],
+    ["#7", "b", "short", 7],
 ]);
 let pivotRoot = N.Create({Leaves:csv});
-Pivot(pivotRoot, [0, 1], [2]);
+Pivot(pivotRoot, [1, 2], [3]);
 console.log(pivotRoot);
+
+let ElNode = ({node}) =>
+{
+    var children = [];
+    var table = [];
+    if(node.Children.length)
+    {
+        if(node.Meta.Row)
+        {
+            table = node.Meta.Row.map( cell => h("span", {style:{padding:"10px"}}, cell));
+        }
+        children = [
+            h("strong", null, node.Meta.Label||"a node"),
+            ...table,
+            ...node.Children.map( inChild => h(ElNode, {node:inChild}))
+        ];
+    }
+    else
+    {
+        children = [
+            h("strong", null, node.Meta.Label||"a node"),
+            ...node.Meta.Row.map( cell => h("span", {style:{padding:"10px"}}, cell))
+        ];
+    }
+    return h("div", {style:{padding:"10px"}}, children);
+}
+let ElRoot = ({root}) =>
+{
+    return h("div", null, [
+        h("h3", null, "tree view"),
+        h(ElNode, {node:root})
+    ])
+};
+render(h(ElRoot, {root:pivotRoot}, null), document.querySelector("#app"));
 
 </script>
 <!--=
