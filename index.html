@@ -83,27 +83,41 @@ var N = {
 let Leafify = inRows => inRows.map(r => N.Create({Row:r}));
 let Pivot = (inParent, inColumnIndicies, inSumIndicies, inDepth) =>
 {
+    /*
+    arguments:
+        - a Node with leaf Nodes temporarily stored in its Meta.Leaves
+            - where each leaf Node has a row of table data in it's Meta.Row
+        - a list of columns to pivot on
+        - a list of columns to sum
+        - optional traversal depth, defaults to 0
+    */
     let depth = inDepth||0;
     let uniques = {};
-    let columnIndex = inColumnIndicies[depth];
-    
     inParent.Meta.Leaves.forEach((inLeaf)=>
     {
-        let row = inLeaf.Meta.Row;
-        let value = row[columnIndex];
-        let match = uniques[value];
+        let row = inLeaf.Meta.Row; // get the raw "CSV" row out of the leaf Node's Meta
+        let value = row[inColumnIndicies[depth]]; // get the pivot column
+        let match = uniques[value]; // check in the uniques list if this pivot column exists
         if(!match)
         {
-            match = uniques[value] = {Label:value, Row:[...row], Leaves:[]};
+            // if not, store a value under that key that will be the meta object for a new child
+            match = uniques[value] = {
+                Label:value,
+                Row:inSumIndicies.map((inColumnIndex, inIndex, inArray) => row[inColumnIndex]), // create a Meta.Row also on the new child nodes to store summed totals
+                Leaves:[]
+            };
+            // grow a child off of the parent using the meta object
             N.Connect(inParent, "Children", N.Create(match), "Parents");
         }
         else
         {
-            inSumIndicies.forEach(inIndex => match.Row[inIndex] += row[inIndex]);
+            // if a match does exist, sum the appropriate columns
+            inSumIndicies.forEach((inColumnIndex, inIndex, inArray) => match.Row[inIndex] += row[inColumnIndex]);
         }
+        // move the leaves into the child
         match.Leaves.push(inLeaf);
     });
-
+    
     delete inParent.Meta.Leaves;
     if(depth == inColumnIndicies.length-1)
     {
@@ -128,9 +142,12 @@ let csv = Leafify([
     ["#6", "a", "short", 0],
     ["#7", "b", "short", 7],
 ]);
-let pivotRoot = N.Create({Leaves:csv});
-Pivot(pivotRoot, [1, 2], [3]);
-console.log(pivotRoot);
+let pivotRoot1 = N.Create({Leaves:csv});
+Pivot(pivotRoot1, [1, 2], [3]);
+let pivotRoot2 = N.Create({Leaves:csv});
+Pivot(pivotRoot2, [2, 1], [3]);
+
+let pivots = [pivotRoot1, pivotRoot2];
 
 let ElNode = ({node}) =>
 {
@@ -157,7 +174,14 @@ let ElNode = ({node}) =>
     }
     return h("div", {style:{padding:"10px"}}, children);
 }
-let ElRoot = ({root}) =>
+
+let ElPivot = ({pivot}) =>
+{
+    return h("div", {}, [
+
+    ]);
+}
+let ElRoot = () =>
 {
     return h("div", null, [
         h("h3", null, "tree view"),
