@@ -7,6 +7,7 @@ var N = {
 
             Children:[],
             Parents:[],
+            /*
             WalkID:0,
 
             GetUpward:[],
@@ -16,6 +17,7 @@ var N = {
             SetUpward:[],
             SetDownward:[],
             SetOutside:[]
+            */
         };
         inChildren.forEach( inChild => N.Connect(output, "Children", inChild, "Parents") );
         return output;
@@ -69,29 +71,27 @@ var N = {
         N.Walk(inNode, "Children", gatherDown, inNode.WalkID);
         leaves.forEach(leaf=>N.Walk(leaf, "Parents", gatherOut, inNode.WalkID));
     }
+    // delete modify
+    // create pivot
+    // delete pivot
 };
 </script>
 
 <script>
 
-var rows = [
-    ["a", 1],
-    ["b", 2],
-    ["a", 3],
-    ["b", 1],
-    ["a", 0],
-    ["b", 7],
-];
-Uniques = (inRows, inColumnIndex, inSumIndicies) =>
+
+
+Subdivide = (inNode, inColumnIndex, inSumIndicies) =>
 {
     let uniques = {};
-    inRows.forEach((inRow)=>
+    inNode.Meta.Rows.forEach((inRow)=>
     {
         let value = inRow[inColumnIndex];
         let match = uniques[value];
         if(!match)
         {
             match = uniques[value] = {Sum:[...inRow], Rows:[]};
+            N.Connect(inNode, "Children", N.Create(match), "Parents");
         }
         else
         {
@@ -99,12 +99,74 @@ Uniques = (inRows, inColumnIndex, inSumIndicies) =>
         }
         match.Rows.push(inRow);
     });
-    return uniques;
+    return inNode;
 };
-console.log(Uniques(rows, 0, [1]));
+
+
+let Leafify = inRows => inRows.map(r => N.Create({Row:r}));
+let Pivot = (inParent, inColumnIndicies, inSumIndicies, inDepth) =>
+{
+    let depth = inDepth||0;
+    let uniques = {};
+    let columnIndex = inColumnIndicies[depth];
+    inParent.Meta.Leaves.forEach((inLeaf)=>
+    {
+        try{
+            let row = inLeaf.Meta.Row;
+            let value = row[columnIndex];
+            let match = uniques[value];
+            if(!match)
+            {
+                match = uniques[value] = {_:value, Row:[...row], Leaves:[]};
+                N.Connect(inParent, "Children", N.Create(match), "Parents");
+            }
+            else
+            {
+                inSumIndicies.forEach(inIndex => match.Row[inIndex] += row[inIndex]);
+            }
+            match.Leaves.push(inLeaf);
+        }
+        catch(e)
+        {
+            console.log(e);
+        }
+    });
+
+    //delete inParent.Meta.Leaves;
+    if(depth == inColumnIndicies.length-1)
+    {
+        // cant go any deeper
+        inParent.Children.forEach( inChild =>
+        {
+            inChild.Meta.Leaves.forEach( inLeaf =>
+            {
+                N.Connect(inChild, "Children", inLeaf, "Parents");
+            });
+        });
+    }
+    else
+    {
+        inParent.Children.forEach( child =>
+        {
+            Pivot(child, inColumnIndicies, inSumIndicies, depth+1);
+        });
+    }
+};
+let csv = Leafify([
+    ["a", "long",  1],
+    ["b", "long",  2],
+    ["b", "short",  2],
+    ["a", "long",  3],
+    ["b", "short", 1],
+    ["a", "short", 0],
+    ["b", "short", 7],
+]);
+let pivotRoot = N.Create({Leaves:csv});
+Pivot(pivotRoot, [0, 1], [2]);
+console.log(pivotRoot);
 
 </script>
-
+<!--=
 <script>
 let tree1 = N.Create("root1",
     N.Create("branch1", 
@@ -145,3 +207,4 @@ N.Modify(tree1);
 console.log(tree1);
 
 </script>
+-->
