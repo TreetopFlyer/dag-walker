@@ -177,18 +177,18 @@ let ElNode = ({node}) =>
 
 let ElPivot = ({pivot}) =>
 {
-    return h("div", {}, [
-
+    return h("div", {style:{display:"inline-block"}}, [
+        h(ElNode, {node:pivot})
     ]);
 }
-let ElRoot = () =>
+let ElRoot = ({pivots}) =>
 {
     return h("div", null, [
         h("h3", null, "tree view"),
-        h(ElNode, {node:root})
+        ...pivots.map(pivot=>h(ElPivot, {pivot}))
     ])
 };
-render(h(ElRoot, {root:pivotRoot}, null), document.querySelector("#app"));
+render(h(ElRoot, {pivots}, null), document.querySelector("#app"));
 
 </script>
 <!--=
