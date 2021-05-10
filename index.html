@@ -1,22 +1,18 @@
 <div id="app"></div>
-<script type="module">
+<script>
 
-import { h, Component, render } from 'https://unpkg.com/preact?module';
-
-var N = {
+var N =
+{
     ID:{
         Walk:0,
         Instance:0
     },
-    Create:(inMeta, ...inChildren) =>
+    Create(inMeta, ...inChildren)
     {
         var output = {
             Meta:inMeta,
             Link:{
-                Hierarchy: {Get:[], Set:[]},
-                ModifyUp:  {Get:[], Set:[]},
-                ModifyDown:{Get:[], Set:[]},
-                ModifyOut: {Get:[], Set:[]},
+
             },
             ID:{
                 Walk:0,
@@ -26,44 +22,90 @@ var N = {
         inChildren.forEach( inChild => N.Connect(output, inChild, "Hierarchy") );
         return output;
     },
-    Flow:(inNode, inType, inForward) => (inForward === undefined || inForward === true) ? inNode.Link[inType].Set : inNode.Link[inType].Get,
-    Connect:(inNodeMajor, inNodeMinor, inKey) =>
+    Flow(inNode, inType, inForward)
     {
-        inNodeMajor.Link[inKey].Set.push(inNodeMinor);
-        inNodeMinor.Link[inKey].Get.push(inNodeMajor);
+        let connectionGroup = inNode.Link[inType];
+        if(!connectionGroup)
+        {
+            inNode.Link[inType] = connectionGroup = {Get:[], Set:[]};
+        }
+        return (inForward === undefined || inForward === true) ? connectionGroup.Set : connectionGroup.Get
     },
-    Disconnect:(inNodeMajor, inNodeMinor, inKey) =>
+    Connect(inNodeMajor, inNodeMinor, inKey)
     {
-        let checkRemove = (inArray, inMember) => inArray.findIndex( (inMember, inIndex, inArray) => (inMember === match) ? inArray.splice(inIndex, 1) : false );
-        
-        // if no minor node was passed, cut all of the major node's "Set" connections under inKey (removes all "children")
-        if(inNodeMinor == null){
-            let array = inNodeMajor[inKey].Set
-            array.forEach( nodeMinor =>
+        N.Flow(inNodeMajor, inKey, true ).push(inNodeMinor);
+        N.Flow(inNodeMinor, inKey, false).push(inNodeMajor);
+    },
+    Disconnect(inNodeMajor, inNodeMinor, inKey)
+    {
+        let remove = (inArray, inMatch) => inArray.findIndex( (inMember, inIndex, inArray) => (inMember === inMatch) ? inArray.splice(inIndex, 1) : false );
+
+        if(inNodeMinor === null)
+        {
+            inNodeMajor.Link[inKey].Set.forEach( inLoopNode => 
             {
-                checkRemove(nodeMinor.Link[inKey].Get, nodeMinor);
+                if(inLoopNode.Link[inKey].Get.length == 1)
+                {
+                    // we're about to delete the last get reference on a minor node, just purge the key entirely
+                    delete inLoopNode.Link[inKey];
+                }
+                else
+                {
+                    remove( inLoopNode.Link[inKey].Get, inNodeMajor);
+                }
+
             });
-            array = [];
+            // we just wiped out all set, if get is empty we can purge the key from major
+            if(inNodeMajor.Link[inKey].Get.length == 0)
+            {
+                delete inNodeMajor.Link[inKey];
+            }
             return;
         }
 
-        // if no major node was passed, cut all of the minor node's "Get" connections under inKey (removes all "parents")
-        if(inNodeMajor == null){
-            let array = inNodeMinor[inKey].Get
-            array.forEach( nodeMajor =>
+        if(inNodeMajor === null)
+        {
+            inNodeMinor.Link[inKey].Get.forEach( inLoopNode => 
             {
-                checkRemove(nodeMajor.Link[inKey].Set, nodeMajor);
+                if(inLoopNode.Link[inKey].Set.length == 1)
+                {
+                    delete inLoopNode.Link[inKey];
+                }
+                else
+                {
+                    remove( inLoopNode.Link[inKey].Set, inNodeMinor);
+                }
             });
-            array = [];
+            // we just wiped out all get, if set is empty we can purge the key from minor
+            if(inNodeMinor.Link[inKey].Set.length == 0)
+            {
+                delete inNodeMinor.Link[inKey];
+            }
             return;
         }
 
-        checkRemove(inNodeMajor.Link[inKey].Set, inNodeMinor);
-        checkRemove(inNodeMinor.Link[inKey].Get, inNodeMajor);
+
+        if(inNodeMajor.Link[inKey].Set.length == 1)
+        {
+            delete inNodeMajor.Link[inKey];
+        }
+        else
+        {
+            remove(inNodeMajor.Link[inKey].Set, inNodeMinor);
+        }
+        if(inNodeMinor.Link[inKey].Get.length == 1)
+        {
+            delete inNodeMinor.Link[inKey];
+        }
+        else
+        {
+            remove(inNodeMinor.Link[inKey].Get, inNodeMajor);
+        }
+
     },
-    Walk:(inIterator, inNode, inKey, inForwards) =>
+    Walk(inIterator, inNode, inKey, inForward)
     {
-        let array = N.Flow(inNode, inKey, inForwards);
+        let array = N.Flow(inNode, inKey, inForward);
         for(let i=0; i<array.length; i++)
         {
             let next = array[i];
@@ -73,10 +115,86 @@ var N = {
                 let results = inIterator(next);
                 if(results !== false)
                 {
-                    N.Walk(inIterator, next, inKey, inForwards);
+                    N.Walk(inIterator, next, inKey, inForward);
                 }
             }
         }
+    }
+};
+
+let a = N.Create({name:"A"});
+let b = N.Create({name:"B"});
+let c = N.Create({name:"C"});
+N.Connect(a, b, "parent");
+N.Connect(a, c, "parent");
+N.Disconnect(a, c, "parent");
+
+</script>
+
+<script>
+var Pivot = 
+{
+    Leaves:{},
+    Init(inRows)
+    {
+        Pivot.Leaves = inRows.map(r => N.Create({Row:r}));
+        Pivot.Init = ()=>{};
+    },
+    Pivot(inParent, inColumnIndicies, inSumIndicies, inDepth)
+    {
+        //arguments:
+        //    - a Node with leaf Nodes temporarily stored in its Meta.Leaves
+        //        - where each leaf Node has a row of table data in it's Meta.Row
+        //    - a list of columns to pivot on
+        //    - a list of columns to sum
+        //    - optional traversal depth, defaults to 0
+        let depth = inDepth||0;
+        let uniques = {};
+        inParent.Meta.Leaves.forEach((inLeaf)=>
+        {
+            let row = inLeaf.Meta.Row; // shorthand for the raw "CSV" row in the leaf Node's Meta
+            let value = row[inColumnIndicies[depth]]; // get the pivot column
+            let match = uniques[value]; // check in the uniques list if this pivot column exists
+            if(!match)
+            {
+                // if not, store a value under that key that will be the meta object for a new child
+                match = uniques[value] = {
+                    Label:value,
+                    Row:inSumIndicies.map((inColumnIndex, inIndex, inArray) => row[inColumnIndex]), // create a Meta.Row also on the new child nodes to store summed totals
+                    Leaves:[]
+                };
+                // grow a child off of the parent using the meta object
+                N.Connect(inParent, N.Create(match), "Hierarchy");
+            }
+            else
+            {
+                // if a match does exist, sum the appropriate columns
+                inSumIndicies.forEach((inColumnIndex, inIndex, inArray) => match.Row[inIndex] += row[inColumnIndex]);
+            }
+            // move the leaves into the child
+            match.Leaves.push(inLeaf);
+        });
+        
+        delete inParent.Meta.Leaves;
+        var iterator;
+        if(depth >= inColumnIndicies.length-1)
+        {
+            iterator = inChild =>
+            {
+                inChild.Meta.Leaves.forEach( inLeaf => N.Connect(inChild, inLeaf, "Hierarchy") );
+                delete inChild.Meta.Leaves;
+            }
+        }
+        else
+        {
+            iterator = child => Pivot.Pivot(child, inColumnIndicies, inSumIndicies, depth+1);
+        }
+        N.Flow(inParent, "Hierarchy").forEach(iterator);
+        return inParent;
+    },
+    Create(inColumnIndicies, inSumIndicies)
+    {
+        return Pivot.Pivot(N.Create({Leaves:Pivot.Leaves}), inColumnIndicies, inSumIndicies);
     },
     Modify(inNode)
     {
@@ -95,100 +213,21 @@ var N = {
         N.Connect(inNode, inNode, "ModifyDown");
         N.Walk(gatherDown, inNode, "Hierarchy");
         leaves.forEach(leaf=>N.Walk(gatherOut, leaf, "Hierarchy", false));
+    },
+    Unmodify(inNode)
+    {
+        N.Disconnect(inNode, null, "ModifyUp");
+        N.Disconnect(inNode, null, "ModifyDown");
+        N.Disconnect(inNode, null, "ModifyOut");
     }
 };
+</script>
 
+<script type="module">
 
-let tree1 = N.Create("root1",
-    N.Create("branch1", 
-        N.Create("leaf1"),
-        N.Create("leaf2"),
-        N.Create("leaf3"),
-    ),
-    N.Create("branch2",
-        N.Create("leaft3"),
-        N.Create("leaft4")
-    )
-);
+import { h, Component, render } from 'https://unpkg.com/preact?module';
 
-let leaves = [];
-let leavesCollect = n =>
-{
-    if(n.Children.length == 0)
-    {
-        leaves.push(n);
-    }
-};
-N.Walk(leavesCollect, tree1, "Hierarchy");
-
-let tree2 = N.Create("root2", 
-    N.Create("branch3",
-        N.Create("leaf5"),
-        N.Create("leaf6")
-    ),
-    N.Create("branch4", ...leaves)
-);
-
-let orchard = N.Create("orchard", tree1, tree2);
-
-
-N.Modify(tree1);
-
-
-let Leafify = inRows => inRows.map(r => N.Create({Row:r}));
-let Pivot = (inParent, inColumnIndicies, inSumIndicies, inDepth) =>
-{
-    
-    //arguments:
-    //    - a Node with leaf Nodes temporarily stored in its Meta.Leaves
-    //        - where each leaf Node has a row of table data in it's Meta.Row
-    //    - a list of columns to pivot on
-    //    - a list of columns to sum
-    //    - optional traversal depth, defaults to 0
-    let depth = inDepth||0;
-    let uniques = {};
-    inParent.Meta.Leaves.forEach((inLeaf)=>
-    {
-        let row = inLeaf.Meta.Row; // shorthand for the raw "CSV" row in the leaf Node's Meta
-        let value = row[inColumnIndicies[depth]]; // get the pivot column
-        let match = uniques[value]; // check in the uniques list if this pivot column exists
-        if(!match)
-        {
-            // if not, store a value under that key that will be the meta object for a new child
-            match = uniques[value] = {
-                Label:value,
-                Row:inSumIndicies.map((inColumnIndex, inIndex, inArray) => row[inColumnIndex]), // create a Meta.Row also on the new child nodes to store summed totals
-                Leaves:[]
-            };
-            // grow a child off of the parent using the meta object
-            N.Connect(inParent, N.Create(match), "Hierarchy");
-        }
-        else
-        {
-            // if a match does exist, sum the appropriate columns
-            inSumIndicies.forEach((inColumnIndex, inIndex, inArray) => match.Row[inIndex] += row[inColumnIndex]);
-        }
-        // move the leaves into the child
-        match.Leaves.push(inLeaf);
-    });
-    
-    delete inParent.Meta.Leaves;
-    var children = N.Flow(inParent, "Hierarchy");
-    if(depth >= inColumnIndicies.length-1)
-    {
-        children.forEach( inChild =>
-        {
-            inChild.Meta.Leaves.forEach( inLeaf => N.Connect(inChild, inLeaf, "Hierarchy") );
-            delete inChild.Meta.Leaves;
-        });
-    }
-    else
-    {
-        children.forEach( child => Pivot(child, inColumnIndicies, inSumIndicies, depth+1) );
-    }
-
-};
-let csv = Leafify([
+let csv = Pivot.Init([
     ["#1", "a", "long",  1],
     ["#2", "b", "long",  2],
     ["#3", "b", "short", 2],
@@ -197,11 +236,8 @@ let csv = Leafify([
     ["#6", "a", "short", 0],
     ["#7", "b", "short", 7],
 ]);
-let pivotRoot1 = N.Create({Leaves:csv});
-Pivot(pivotRoot1, [1, 2], [3]);
-let pivotRoot2 = N.Create({Leaves:csv});
-Pivot(pivotRoot2, [2, 1], [3]);
-
+let pivotRoot1 = Pivot.Create([1, 2], [3]);
+let pivotRoot2 = Pivot.Create([2, 1], [3]);
 let pivots = [pivotRoot1, pivotRoot2];
 
 let ElNode = ({node}) =>
