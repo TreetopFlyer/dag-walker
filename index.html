@@ -1,4 +1,5 @@
 <div id="app"></div>
+
 <script>
 
 var N =
@@ -7,22 +8,18 @@ var N =
         Walk:0,
         Instance:0
     },
-    Create(inMeta, ...inChildren)
+    Create(inMeta)
     {
-        var output = {
-            Meta:inMeta,
-            Link:{
-
-            },
+        return {
             ID:{
                 Walk:0,
                 Instance:N.ID.Instance++
-            }
+            },
+            Meta:inMeta||{},
+            Link:{}
         };
-        inChildren.forEach( inChild => N.Connect(output, inChild, "Hierarchy") );
-        return output;
     },
-    Flow(inNode, inType, inForward)
+    Step(inNode, inType, inForward)
     {
         let connectionGroup = inNode.Link[inType];
         if(!connectionGroup)
@@ -33,8 +30,8 @@ var N =
     },
     Connect(inNodeMajor, inNodeMinor, inKey)
     {
-        N.Flow(inNodeMajor, inKey, true ).push(inNodeMinor);
-        N.Flow(inNodeMinor, inKey, false).push(inNodeMajor);
+        N.Step(inNodeMajor, inKey, true ).push(inNodeMinor);
+        N.Step(inNodeMinor, inKey, false).push(inNodeMajor);
     },
     Disconnect(inNodeMajor, inNodeMinor, inKey)
     {
@@ -105,7 +102,7 @@ var N =
     },
     Walk(inIterator, inNode, inKey, inForward)
     {
-        let array = N.Flow(inNode, inKey, inForward);
+        let array = N.Step(inNode, inKey, inForward);
         for(let i=0; i<array.length; i++)
         {
             let next = array[i];
@@ -122,12 +119,24 @@ var N =
     }
 };
 
+`
+A     C
+ \   / \
+  \ /   \
+   B     D
+`
 let a = N.Create({name:"A"});
 let b = N.Create({name:"B"});
 let c = N.Create({name:"C"});
+let d = N.Create({name:"D"});
 N.Connect(a, b, "parent");
-N.Connect(a, c, "parent");
-N.Disconnect(a, c, "parent");
+N.Connect(c, b, "parent");
+N.Connect(c, d, "parent");
+N.Disconnect(a, null, "parent");
+console.log(a.Link);
+console.log(b.Link);
+console.log(c.Link);
+console.log(d.Link);
 
 </script>
 
@@ -135,6 +144,8 @@ N.Disconnect(a, c, "parent");
 var Pivot = 
 {
     Leaves:{},
+    Root:{},
+    
     Init(inRows)
     {
         Pivot.Leaves = inRows.map(r => N.Create({Row:r}));
@@ -189,7 +200,7 @@ var Pivot =
         {
             iterator = child => Pivot.Pivot(child, inColumnIndicies, inSumIndicies, depth+1);
         }
-        N.Flow(inParent, "Hierarchy").forEach(iterator);
+        N.Step(inParent, "Hierarchy").forEach(iterator);
         return inParent;
     },
     Create(inColumnIndicies, inSumIndicies)
@@ -205,7 +216,7 @@ var Pivot =
         let gatherDown = n =>
         {
             N.Connect(inNode, n, "ModifyDown");
-            N.Flow(n, "Hierarchy").length == 0 ?  leaves.push(n) : null;
+            N.Step(n, "Hierarchy").length == 0 ?  leaves.push(n) : null;
         };
         let gatherOut = n => N.Connect(inNode, n, "ModifyOut");
 
@@ -225,9 +236,11 @@ var Pivot =
 
 <script type="module">
 
-import { h, Component, render } from 'https://unpkg.com/preact?module';
+import {h, render, createContext} from 'https://cdn.skypack.dev/preact';
+import {useReducer} from 'https://cdn.skypack.dev/preact/hooks';
+import { css, cx } from 'https://cdn.skypack.dev/@emotion/css';
 
-let csv = Pivot.Init([
+Pivot.Init([
     ["#1", "a", "long",  1],
     ["#2", "b", "long",  2],
     ["#3", "b", "short", 2],
@@ -240,9 +253,20 @@ let pivotRoot1 = Pivot.Create([1, 2], [3]);
 let pivotRoot2 = Pivot.Create([2, 1], [3]);
 let pivots = [pivotRoot1, pivotRoot2];
 
+
+let Store = createContext(null);
+let StoreState = 
+{
+    count:7
+};
+let StoreReducer = (inState, inAction) =>
+{
+
+}
+
 let ElNode = ({node}) =>
 {
-    var nodeChildren = N.Flow(node, "Hierarchy");
+    var nodeChildren = N.Step(node, "Hierarchy");
     var children = [];
     var table = [];
 
@@ -252,7 +276,11 @@ let ElNode = ({node}) =>
     }
     children =  [
         h("strong", null, node.Meta.Label||"a node"),
-        ...table
+        ...table,
+        h(Store.Consumer, null, value=>
+        {
+            return value.get.count;
+        })
     ];
 
     if(nodeChildren.length)
@@ -264,7 +292,6 @@ let ElNode = ({node}) =>
     }
     return h("div", {style:{padding:"10px"}}, children);
 }
-
 let ElPivot = ({pivot}) =>
 {
     return h("div", {style:{display:"inline-block"}}, [
@@ -273,10 +300,14 @@ let ElPivot = ({pivot}) =>
 }
 let ElRoot = ({pivots}) =>
 {
-    return h("div", null, [
-        h("h3", null, "tree view"),
-        ...pivots.map(pivot=>h(ElPivot, {pivot}))
-    ])
+    let [get, set] = useReducer(StoreReducer, StoreState);
+
+    return h(Store.Provider, {value:{get, set}}, [
+        h("div", null, [
+            h("h3", null, "tree view"),
+            ...pivots.map(pivot=>h(ElPivot, {pivot}))
+        ])
+    ]);
 };
 render(h(ElRoot, {pivots}, null), document.querySelector("#app"));
 
