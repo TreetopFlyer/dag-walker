@@ -8,6 +8,7 @@ var N =
         Walk:0,
         Instance:0
     },
+
     Create(inMeta)
     {
         return {
@@ -19,19 +20,10 @@ var N =
             Link:{}
         };
     },
-    Step(inNode, inType, inForward)
-    {
-        let connectionGroup = inNode.Link[inType];
-        if(!connectionGroup)
-        {
-            inNode.Link[inType] = connectionGroup = {Get:[], Set:[]};
-        }
-        return (inForward === undefined || inForward === true) ? connectionGroup.Set : connectionGroup.Get
-    },
     Connect(inNodeMajor, inNodeMinor, inKey)
     {
-        N.Step(inNodeMajor, inKey, true ).push(inNodeMinor);
-        N.Step(inNodeMinor, inKey, false).push(inNodeMajor);
+        N.Step(inNodeMajor, inKey, true, true).push(inNodeMinor);
+        N.Step(inNodeMinor, inKey, false, true).push(inNodeMajor);
     },
     Disconnect(inNodeMajor, inNodeMinor, inKey)
     {
@@ -100,6 +92,23 @@ var N =
         }
 
     },
+    Step(inNode, inKey, inForward, inForceCreate)
+    {
+        let connectionGroup = inNode.Link[inKey];
+        if(!connectionGroup)
+        {
+            if(inForceCreate)
+            {
+                inNode.Link[inKey] = connectionGroup = {Get:[], Set:[]};
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return (inForward === undefined || inForward === true) ? connectionGroup.Set : connectionGroup.Get;
+        
+    },
     Walk(inIterator, inNode, inKey, inForward)
     {
         let array = N.Step(inNode, inKey, inForward);
@@ -116,9 +125,21 @@ var N =
                 }
             }
         }
+    },
+    Path(inArray, inNode, inKey, inForward)
+    {
+        var current = inNode;
+        var direction = inForward||true;
+        for(let i=0; i<inArray.length; i++)
+        {
+            current = N.Step(current, inKey, direction)[inArray[i]];
+        }
+        return current;
     }
 };
+</script>
 
+<script>
 `
 A     C
  \   / \
@@ -133,11 +154,12 @@ N.Connect(a, b, "parent");
 N.Connect(c, b, "parent");
 N.Connect(c, d, "parent");
 N.Disconnect(a, null, "parent");
+/*
 console.log(a.Link);
 console.log(b.Link);
 console.log(c.Link);
 console.log(d.Link);
-
+*/
 </script>
 
 <script>
@@ -211,19 +233,23 @@ var Pivot =
     {
         N.ID.Walk++;
 
+        let modifier = N.Create({});
+
         let leaves = [];
-        let gatherUp = n => N.Connect(inNode, n, "ModifyUp");
+        let gatherUp = n => N.Connect(modifier, n, "ModifyUp");
         let gatherDown = n =>
         {
-            N.Connect(inNode, n, "ModifyDown");
+            N.Connect(modifier, n, "ModifyDown");
             N.Step(n, "Hierarchy").length == 0 ?  leaves.push(n) : null;
         };
-        let gatherOut = n => N.Connect(inNode, n, "ModifyOut");
+        let gatherOut = n => N.Connect(modifier, n, "ModifyOut");
 
         N.Walk(gatherUp, inNode, "Hierarchy", false);
-        N.Connect(inNode, inNode, "ModifyDown");
+        N.Connect(modifier, inNode, "ModifyDown");
         N.Walk(gatherDown, inNode, "Hierarchy");
         leaves.forEach(leaf=>N.Walk(gatherOut, leaf, "Hierarchy", false));
+
+        return modifier;
     },
     Unmodify(inNode)
     {
@@ -253,6 +279,10 @@ let pivotRoot1 = Pivot.Create([1, 2], [3]);
 let pivotRoot2 = Pivot.Create([2, 1], [3]);
 let pivots = [pivotRoot1, pivotRoot2];
 
+let select = N.Path([0, 1], pivotRoot1, "Hierarchy");
+let mod = Pivot.Modify(select);
+
+
 
 let Store = createContext(null);
 let StoreState = 
@@ -262,7 +292,7 @@ let StoreState =
 let StoreReducer = (inState, inAction) =>
 {
 
-}
+};
 
 let ElNode = ({node}) =>
 {
@@ -270,12 +300,27 @@ let ElNode = ({node}) =>
     var children = [];
     var table = [];
 
+    let styles = {
+    };
+    if(node.Link["ModifyOut"])
+    {
+        styles.backgroundColor = "lightgrey";
+    }
+    if(node.Link["ModifyDown"])
+    {
+        styles.backgroundColor = "yellow";
+    }
+    if(node.Link["ModifyUp"])
+    {
+        styles.backgroundColor = "lavender";
+    }
+
     if(node.Meta.Row)
     {
         table = node.Meta.Row.map( cell => h("span", {style:{padding:"10px"}}, cell));
     }
     children =  [
-        h("strong", null, node.Meta.Label||"a node"),
+        h("strong", {style:styles}, node.Meta.Label||"a node"),
         ...table,
         h(Store.Consumer, null, value=>
         {
