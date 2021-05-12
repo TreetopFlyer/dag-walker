@@ -172,7 +172,7 @@ var Pivot =
         Pivot.Leaves = inRows.map(r => N.Create({Row:r}));
         Pivot.Init = ()=>{};
     },
-    Pivot(inParent, inColumnIndicies, inSumIndicies, inDepth)
+    Pivot(inParent, inPivotIndicies, inSumIndicies, inDepth)
     {
         //arguments:
         //    - a Node with leaf Nodes temporarily stored in its Meta.Leaves
@@ -185,14 +185,21 @@ var Pivot =
         inParent.Meta.Leaves.forEach((inLeaf)=>
         {
             let row = inLeaf.Meta.Row; // shorthand for the raw "CSV" row in the leaf Node's Meta
-            let value = row[inColumnIndicies[depth]]; // get the pivot column
+            let value = row[inPivotIndicies[depth]]; // get the pivot column
             let match = uniques[value]; // check in the uniques list if this pivot column exists
             if(!match)
             {
                 // if not, store a value under that key that will be the meta object for a new child
+
+                let clone = row.map(r=>null);
+                inSumIndicies.forEach((inSumIndex, inIndex, inArray)=>
+                {
+                    clone[inSumIndex] = row[inSumIndex]
+                });
+
                 match = uniques[value] = {
                     Label:value,
-                    Row:inSumIndicies.map((inColumnIndex, inIndex, inArray) => row[inColumnIndex]), // create a Meta.Row also on the new child nodes to store summed totals
+                    Row:clone, 
                     Leaves:[]
                 };
                 // grow a child off of the parent using the meta object
@@ -201,7 +208,7 @@ var Pivot =
             else
             {
                 // if a match does exist, sum the appropriate columns
-                inSumIndicies.forEach((inColumnIndex, inIndex, inArray) => match.Row[inIndex] += row[inColumnIndex]);
+                inSumIndicies.forEach((inSumIndex) => match.Row[inSumIndex] += row[inSumIndex]);
             }
             // move the leaves into the child
             match.Leaves.push(inLeaf);
@@ -209,7 +216,7 @@ var Pivot =
         
         delete inParent.Meta.Leaves;
         var iterator;
-        if(depth >= inColumnIndicies.length-1)
+        if(depth >= inPivotIndicies.length-1)
         {
             iterator = inChild =>
             {
@@ -219,14 +226,14 @@ var Pivot =
         }
         else
         {
-            iterator = child => Pivot.Pivot(child, inColumnIndicies, inSumIndicies, depth+1);
+            iterator = child => Pivot.Pivot(child, inPivotIndicies, inSumIndicies, depth+1);
         }
         N.Step(inParent, "Hierarchy").forEach(iterator);
         return inParent;
     },
-    Create(inColumnIndicies, inSumIndicies)
+    Create(inPivotIndicies, inSumIndicies)
     {
-        return Pivot.Pivot(N.Create({Leaves:Pivot.Leaves}), inColumnIndicies, inSumIndicies);
+        return Pivot.Pivot(N.Create({Leaves:Pivot.Leaves}), inPivotIndicies, inSumIndicies);
     },
     Modify(inNode)
     {
@@ -320,13 +327,13 @@ let ElNode = ({node, depth}) =>
         margin:0;
         border-top:1px solid lightgrey;
 
-        .Label
+        & > .Label
         {
             display:inline-block;
             width:200px;
             background:${color};
         }
-        .Label::before
+        & > .Label::before
         {
             content:" ";
             display:inline-block;
@@ -345,8 +352,8 @@ let ElNode = ({node, depth}) =>
         }
     `;
 
-    return h("div", {className:css(nodeBase)}, [
-        h("div", {className:"Upper"}, [
+    return h("div", {className:"Node"}, [
+        h("div", {className:cx(css(nodeBase), "Upper")}, [
             h("div", {className:"Label"}, (node.Meta.Label || "a node") ),
             h("div", {className:"Table"}, (node.Meta.Row || []).map( cell => h("div", {className:"Cell"}, cell)) )
         ]),
