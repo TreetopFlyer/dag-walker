@@ -166,7 +166,6 @@ console.log(d.Link);
 var Pivot = 
 {
     Leaves:{},
-    Root:{},
     
     Init(inRows)
     {
@@ -245,7 +244,7 @@ var Pivot =
         let gatherOut = n => N.Connect(modifier, n, "ModifyOut");
 
         N.Walk(gatherUp, inNode, "Hierarchy", false);
-        N.Connect(modifier, inNode, "ModifyDown");
+        N.Connect(modifier, inNode, "ModifyAt");
         N.Walk(gatherDown, inNode, "Hierarchy");
         leaves.forEach(leaf=>N.Walk(gatherOut, leaf, "Hierarchy", false));
 
@@ -294,53 +293,70 @@ let StoreReducer = (inState, inAction) =>
 
 };
 
-let ElNode = ({node}) =>
+let ElNode = ({node, depth}) =>
 {
-    var nodeChildren = N.Step(node, "Hierarchy");
-    var children = [];
-    var table = [];
+    var color;
 
-    let styles = {
-    };
-    if(node.Link["ModifyOut"])
+    if(N.Step(node, "ModifyDown"))
     {
-        styles.backgroundColor = "lightgrey";
+        color = `yellow`;
     }
-    if(node.Link["ModifyDown"])
+    if(N.Step(node, "ModifyUp"))
     {
-        styles.backgroundColor = "yellow";
+        color = `skyblue`;
     }
-    if(node.Link["ModifyUp"])
+    if(N.Step(node, "ModifyOut"))
     {
-        styles.backgroundColor = "lavender";
+        color = `lightgrey`;
+    }
+    if(N.Step(node, "ModifyAt"))
+    {
+        color = `red`;
     }
 
-    if(node.Meta.Row)
-    {
-        table = node.Meta.Row.map( cell => h("span", {style:{padding:"10px"}}, cell));
-    }
-    children =  [
-        h("strong", {style:styles}, node.Meta.Label||"a node"),
-        ...table,
-        h(Store.Consumer, null, value=>
+    let nodeBase = css`
+        position:relative;
+        padding:0;
+        margin:0;
+        border-top:1px solid lightgrey;
+
+        .Label
         {
-            return value.get.count;
-        })
-    ];
+            display:inline-block;
+            width:200px;
+            background:${color};
+        }
+        .Label::before
+        {
+            content:" ";
+            display:inline-block;
+            width:${depth*15}px;
+        }
+        .Table
+        {
+            display:inline-block;
+            text-align:right;
+        }
+        .Cell
+        {
+            width:50px;
+            display:inline-block;
+            padding:10px;
+        }
+    `;
 
-    if(nodeChildren.length)
-    {
-        children = [
-            ...children,
-            ...nodeChildren.map( inChild => h(ElNode, {node:inChild}))
-        ];
-    }
-    return h("div", {style:{padding:"10px"}}, children);
+    return h("div", {className:css(nodeBase)}, [
+        h("div", {className:"Upper"}, [
+            h("div", {className:"Label"}, (node.Meta.Label || "a node") ),
+            h("div", {className:"Table"}, (node.Meta.Row || []).map( cell => h("div", {className:"Cell"}, cell)) )
+        ]),
+        h("div", {className:"Nodes"}, N.Step(node, "Hierarchy").map(child=>h(ElNode, {node:child, depth:depth+1})) )
+    ]);
 }
 let ElPivot = ({pivot}) =>
 {
-    return h("div", {style:{display:"inline-block"}}, [
-        h(ElNode, {node:pivot})
+    return h("div", {style:{display:"inline-block", width:"500px"}}, [
+        h(ElNode, {node:pivot, depth:0})
     ]);
 }
 let ElRoot = ({pivots}) =>
