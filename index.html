@@ -114,6 +114,7 @@ var N =
         let array = N.Step(inNode, inKey, inForward);
         for(let i=0; i<array.length; i++)
         {
+
             let next = array[i];
             if(next.ID.Walk !== N.ID.Walk)
             {
@@ -237,25 +238,32 @@ var Pivot =
     },
     Modify(inNode)
     {
-        N.ID.Walk++;
-
-        let modifier = N.Create({});
-
+        let modified = N.Create({});
         let leaves = [];
-        let gatherUp = n => N.Connect(modifier, n, "ModifyUp");
+
+        let gatherUp = n => 
+        {
+            N.Connect(modified, n, "ModifyUp");
+        };
         let gatherDown = n =>
         {
-            N.Connect(modifier, n, "ModifyDown");
+            N.Connect(modified, n, "ModifyDown");
             N.Step(n, "Hierarchy").length == 0 ?  leaves.push(n) : null;
         };
-        let gatherOut = n => N.Connect(modifier, n, "ModifyOut");
+        let gatherOut = n => 
+        {
+            N.Connect(modified, n, "ModifyOut");
+        };
+
+        N.ID.Walk++;
+        inNode.ID.Walk = N.ID.Walk;
+        N.Connect(modified, inNode, "ModifyAt");
 
         N.Walk(gatherUp, inNode, "Hierarchy", false);
-        N.Connect(modifier, inNode, "ModifyAt");
         N.Walk(gatherDown, inNode, "Hierarchy");
         leaves.forEach(leaf=>N.Walk(gatherOut, leaf, "Hierarchy", false));
 
-        return modifier;
+        return modified;
     },
     Unmodify(inNode)
     {
@@ -289,56 +297,14 @@ let select = N.Path([0, 1], pivotRoot1, "Hierarchy");
 let mod = Pivot.Modify(select);
 
 
-
-let Store = createContext(null);
-let StoreState = 
-{
-    count:7
-};
-let StoreReducer = (inState, inAction) =>
-{
-
-};
-
 let ElNode = ({node, depth}) =>
 {
-    var color;
-
-    if(N.Step(node, "ModifyDown"))
-    {
-        color = `yellow`;
-    }
-    if(N.Step(node, "ModifyUp"))
-    {
-        color = `skyblue`;
-    }
-    if(N.Step(node, "ModifyOut"))
-    {
-        color = `lightgrey`;
-    }
-    if(N.Step(node, "ModifyAt"))
-    {
-        color = `red`;
-    }
-
     let nodeBase = css`
         position:relative;
         padding:0;
         margin:0;
         border-top:1px solid lightgrey;
 
-        & > .Label
-        {
-            display:inline-block;
-            width:200px;
-            background:${color};
-        }
-        & > .Label::before
-        {
-            content:" ";
-            display:inline-block;
-            width:${depth*15}px;
-        }
         .Table
         {
             display:inline-block;
@@ -351,10 +317,45 @@ let ElNode = ({node, depth}) =>
             padding:10px;
         }
     `;
+    let label = css`
+        display:inline-block;
+        width:200px;
+
+        &::before
+        {
+            content:" ";
+            display:inline-block;
+            width:${depth*15}px;
+        }
+        .Modify
+        {
+            float:right;
+        }
+    `;
+
+    let mCombined = cx(
+        css`
+            display:inline-block;
+            width:0px;
+            height:0px;
+            border:7px solid white;
+        `,
+        {
+            [css`border-bottom-color:lightblue;`]: N.Step(node, "ModifyUp"  ),
+            [css`border-top-color:orange;`      ]: N.Step(node, "ModifyDown"),
+            [css`border-left-color:grey;`       ]: N.Step(node, "ModifyOut" ),
+            [css`border-right-color:red;`       ]: N.Step(node, "ModifyAt"  )
+        },
+    );
 
     return h("div", {className:"Node"}, [
-        h("div", {className:cx(css(nodeBase), "Upper")}, [
-            h("div", {className:"Label"}, (node.Meta.Label || "a node") ),
+        h("div", {className:cx(nodeBase, "Upper")}, [
+            h("div", {className:label}, [
+                h("span", {className:"Icon Expand"}, "+"),
+                h("span", {className:"Name"}, (node.Meta.Label || "a node")+" "+node.ID.Walk),
+                h("span", {className:mCombined}),
+                h("span", {className:"Icon Modify"}, "Modify")
+            ] ),
             h("div", {className:"Table"}, (node.Meta.Row || []).map( cell => h("div", {className:"Cell"}, cell)) )
         ]),
         h("div", {className:"Nodes"}, N.Step(node, "Hierarchy").map(child=>h(ElNode, {node:child, depth:depth+1})) )
@@ -368,14 +369,10 @@ let ElPivot = ({pivot}) =>
 }
 let ElRoot = ({pivots}) =>
 {
-    let [get, set] = useReducer(StoreReducer, StoreState);
-
-    return h(Store.Provider, {value:{get, set}}, [
-        h("div", null, [
-            h("h3", null, "tree view"),
-            ...pivots.map(pivot=>h(ElPivot, {pivot}))
-        ])
-    ]);
+    return h("div", null, [
+        h("h3", null, "tree view"),
+        ...pivots.map(pivot=>h(ElPivot, {pivot}))
+    ])
 };
 render(h(ElRoot, {pivots}, null), document.querySelector("#app"));
 
