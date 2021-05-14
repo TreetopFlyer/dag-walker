@@ -20,8 +20,19 @@ var N =
             Link:{}
         };
     },
-    Connect(inNodeMajor, inNodeMinor, inKey)
+    Connect(inNodeMajor, inNodeMinor, inKey, inUnique)
     {
+        if(inUnique) // bail if the nodes are already connected
+        {
+            let check = N.Step(inNodeMajor, inKey, true);
+            if(check)
+            {
+                if(check.indexOf(inNodeMinor) < 0)
+                {
+                    return;
+                }
+            }
+        }
         N.Step(inNodeMajor, inKey, true, true).push(inNodeMinor);
         N.Step(inNodeMinor, inKey, false, true).push(inNodeMajor);
     },
@@ -31,7 +42,9 @@ var N =
 
         if(inNodeMinor === null)
         {
-            inNodeMajor.Link[inKey].Set.forEach( inLoopNode => 
+            let check = N.Step(inNodeMajor, inKey);
+            if(!check){ return; }
+            check.forEach( inLoopNode => 
             {
                 if(inLoopNode.Link[inKey].Get.length == 1)
                 {
@@ -141,29 +154,6 @@ var N =
 </script>
 
 <script>
-`
-A     C
- \   / \
-  \ /   \
-   B     D
-`
-let a = N.Create({name:"A"});
-let b = N.Create({name:"B"});
-let c = N.Create({name:"C"});
-let d = N.Create({name:"D"});
-N.Connect(a, b, "parent");
-N.Connect(c, b, "parent");
-N.Connect(c, d, "parent");
-N.Disconnect(a, null, "parent");
-/*
-console.log(a.Link);
-console.log(b.Link);
-console.log(c.Link);
-console.log(d.Link);
-*/
-</script>
-
-<script>
 var Pivot = 
 {
     Leaves:{},
@@ -197,7 +187,6 @@ var Pivot =
                 {
                     clone[inSumIndex] = row[inSumIndex]
                 });
-
                 match = uniques[value] = {
                     Label:value,
                     Row:clone, 
@@ -219,10 +208,41 @@ var Pivot =
         var iterator;
         if(depth >= inPivotIndicies.length-1)
         {
-            iterator = inChild =>
+            iterator = inLastBranch =>
             {
-                inChild.Meta.Leaves.forEach( inLeaf => N.Connect(inChild, inLeaf, "Hierarchy") );
-                delete inChild.Meta.Leaves;
+                inLastBranch.Meta.Leaves.forEach( inLeaf =>
+                {
+                    // collect modifiers effecting leaves
+                    let modifiers = [];
+                    let check = N.Step(inLeaf, "ModifyAt", false);
+                    if(check)
+                    {
+                        modifiers = modifiers.concat(check);
+                    }
+                    check = N.Step(inLeaf, "ModifyDown", false);
+                    if(check)
+                    {
+                        modifiers = modifiers.concat(check);
+                    }
+
+                    if(modifiers.length)
+                    {
+                        // apply them to the branch
+                        inLastBranch.ID.Walk = N.ID.Walk;
+                        modifiers.forEach( inModifier => N.Connect(inModifier, inLastBranch, "ModifyUp") )
+
+                        // also walk them up, but with a unique check connection
+                        N.Walk( inNode=>
+                        {
+                            modifiers.forEach( inModifier => N.Connect(inModifier, inNode, "ModifyUp", true) )
+                        }
+                        , inLastBranch, "Hierarchy", false);
+                    }
+
+                    // lastly connect the leaf to the branch
+                    N.Connect(inLastBranch, inLeaf, "Hierarchy");
+                });
+                delete inLastBranch.Meta.Leaves;
             }
         }
         else
@@ -234,6 +254,7 @@ var Pivot =
     },
     Create(inPivotIndicies, inSumIndicies)
     {
+        N.ID.Walk++;
         return Pivot.Pivot(N.Create({Leaves:Pivot.Leaves}), inPivotIndicies, inSumIndicies);
     },
     Modify(inNode)
@@ -268,9 +289,7 @@ var Pivot =
     Unmodify(inNode)
     {
         let modifier = N.Step(inNode, "ModifyAt", false)[0];
-        console.log(modifier);
 
-        
         N.Disconnect(modifier, null, "ModifyUp");
         N.Disconnect(modifier, null, "ModifyDown");
         N.Disconnect(modifier, null, "ModifyOut");
@@ -281,8 +300,8 @@ var Pivot =
 
 <script type="module">
 
-import {h, render, createContext, Fragment} from 'https://cdn.skypack.dev/preact';
-import {useReducer} from 'https://cdn.skypack.dev/preact/hooks';
+import { h, render, createContext, Fragment } from 'https://cdn.skypack.dev/preact';
+import { useReducer } from 'https://cdn.skypack.dev/preact/hooks';
 import { css, cx } from 'https://cdn.skypack.dev/@emotion/css';
 
 Pivot.Init([
@@ -295,14 +314,14 @@ Pivot.Init([
     ["#7", "b", "short", 7],
 ]);
 let pivotRoot1 = Pivot.Create([1, 2], [3]);
-let pivotRoot2 = Pivot.Create([2, 1], [3]);
-let pivots = [pivotRoot1, pivotRoot2];
+//let pivotRoot2 = Pivot.Create([2, 1], [3]);
+//let pivots = [pivotRoot1, pivotRoot2];
+let pivots = [pivotRoot1];
 
-/*
-let select = N.Path([0, 1], pivotRoot1, "Hierarchy");
-let mod = Pivot.Modify(select);
-*/
-
+let AddNewPivot = () =>
+{
+    pivots.push(Pivot.Create([2, 1], [3]));
+}
 
 let ElNode = ({node, depth}) =>
 {
@@ -395,6 +414,12 @@ let ElRoot = props =>
 {
     return h("div", null, [
         h("h3", null, "tree view"),
+        h("button", { onClick:e=>
+        {
+            AddNewPivot();
+            Render();
+        }
+        }, "add new pivot"),
         ...pivots.map(pivot=>h(ElPivot, {pivot}))
     ])
 };
