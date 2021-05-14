@@ -267,16 +267,21 @@ var Pivot =
     },
     Unmodify(inNode)
     {
-        N.Disconnect(inNode, null, "ModifyUp");
-        N.Disconnect(inNode, null, "ModifyDown");
-        N.Disconnect(inNode, null, "ModifyOut");
+        let modifier = N.Step(inNode, "ModifyAt", false)[0];
+        console.log(modifier);
+
+        
+        N.Disconnect(modifier, null, "ModifyUp");
+        N.Disconnect(modifier, null, "ModifyDown");
+        N.Disconnect(modifier, null, "ModifyOut");
+        N.Disconnect(modifier, null, "ModifyAt");
     }
 };
 </script>
 
 <script type="module">
 
-import {h, render, createContext} from 'https://cdn.skypack.dev/preact';
+import {h, render, createContext, Fragment} from 'https://cdn.skypack.dev/preact';
 import {useReducer} from 'https://cdn.skypack.dev/preact/hooks';
 import { css, cx } from 'https://cdn.skypack.dev/@emotion/css';
 
@@ -293,8 +298,10 @@ let pivotRoot1 = Pivot.Create([1, 2], [3]);
 let pivotRoot2 = Pivot.Create([2, 1], [3]);
 let pivots = [pivotRoot1, pivotRoot2];
 
+/*
 let select = N.Path([0, 1], pivotRoot1, "Hierarchy");
 let mod = Pivot.Modify(select);
+*/
 
 
 let ElNode = ({node, depth}) =>
@@ -333,14 +340,13 @@ let ElNode = ({node, depth}) =>
         }
     `;
 
-    let mCombined = cx(
-        css`
-            display:inline-block;
-            width:0px;
-            height:0px;
-            border:7px solid white;
-        `,
+    let icon = cx(
         {
+            [css`
+                display:inline-block;
+                width:0px;
+                height:0px;
+                border:7px solid white;`        ]: true,
             [css`border-bottom-color:lightblue;`]: N.Step(node, "ModifyUp"  ),
             [css`border-top-color:orange;`      ]: N.Step(node, "ModifyDown"),
             [css`border-left-color:grey;`       ]: N.Step(node, "ModifyOut" ),
@@ -348,32 +354,51 @@ let ElNode = ({node, depth}) =>
         },
     );
 
+    let buttonModify = h("span", {
+        className:"Icon Modify Add",
+        onClick:e=>
+        {
+            Pivot.Modify(node);
+            Render();
+        }
+    }, "Modify");
+
+    let buttonUnmodify = h("span", {
+        className:"Icon Modify remove",
+        onClick:e=>
+        {
+            Pivot.Unmodify(node);
+            Render();
+        }
+    }, "Unmodify");
+
     return h("div", {className:"Node"}, [
         h("div", {className:cx(nodeBase, "Upper")}, [
             h("div", {className:label}, [
                 h("span", {className:"Icon Expand"}, "+"),
                 h("span", {className:"Name"}, (node.Meta.Label || "a node")+" "+node.ID.Walk),
-                h("span", {className:mCombined}),
-                h("span", {className:"Icon Modify"}, "Modify")
+                h("span", {className: icon}),
+                N.Step(node, "ModifyAt") ? buttonUnmodify : buttonModify
             ] ),
             h("div", {className:"Table"}, (node.Meta.Row || []).map( cell => h("div", {className:"Cell"}, cell)) )
         ]),
         h("div", {className:"Nodes"}, N.Step(node, "Hierarchy").map(child=>h(ElNode, {node:child, depth:depth+1})) )
     ]);
-}
+};
 let ElPivot = ({pivot}) =>
 {
     return h("div", {style:{display:"inline-block", width:"500px"}}, [
         h(ElNode, {node:pivot, depth:0})
     ]);
-}
-let ElRoot = ({pivots}) =>
+};
+let ElRoot = props =>
 {
     return h("div", null, [
         h("h3", null, "tree view"),
         ...pivots.map(pivot=>h(ElPivot, {pivot}))
     ])
 };
-render(h(ElRoot, {pivots}, null), document.querySelector("#app"));
+let Render = () => render(h(ElRoot), document.querySelector("#app"));
+Render();
 
 </script>
