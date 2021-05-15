@@ -122,12 +122,17 @@ var N =
         return (inForward === undefined || inForward === true) ? connectionGroup.Set : connectionGroup.Get;
         
     },
-    Walk(inIterator, inNode, inKey, inForward)
+    Walk(inIterator, inNode, inKey, inForward, inTerminal)
     {
         let array = N.Step(inNode, inKey, inForward);
+
+        if(!array.length && inTerminal)
+        {
+            return inTerminal(inNode);
+        }
+
         for(let i=0; i<array.length; i++)
         {
-
             let next = array[i];
             if(next.ID.Walk !== N.ID.Walk)
             {
@@ -135,7 +140,7 @@ var N =
                 let results = inIterator(next);
                 if(results !== false)
                 {
-                    N.Walk(inIterator, next, inKey, inForward);
+                    N.Walk(inIterator, next, inKey, inForward, inTerminal);
                 }
             }
         }
@@ -157,7 +162,8 @@ var N =
 var Pivot = 
 {
     Leaves:{},
-    
+    Root:N.Create({}),
+
     Init(inRows)
     {
         Pivot.Leaves = inRows.map(r => N.Create({Row:r}));
@@ -255,26 +261,47 @@ var Pivot =
     Create(inPivotIndicies, inSumIndicies)
     {
         N.ID.Walk++;
-        return Pivot.Pivot(N.Create({Leaves:Pivot.Leaves}), inPivotIndicies, inSumIndicies);
+        
+        let pivotRoot = N.Create({Leaves:Pivot.Leaves});
+        N.Connect(Pivot.Root, pivotRoot, "Pivot");
+        return Pivot.Pivot(pivotRoot, inPivotIndicies, inSumIndicies);
+    },
+    Delete(inRoot)
+    {
+        N.ID.Walk++;
+
+        let scan = n =>
+        {
+
+        };
+
+        N.Walk(scan, inRoot, "Hierarchy")
     },
     Modify(inNode)
     {
         let modified = N.Create({});
-        let leaves = [];
-
-        let gatherUp = n => 
+        N.ID.Walk++;
+        if(N.Step(inNode, "Hierarchy").length)
         {
-            N.Connect(modified, n, "ModifyUp");
-        };
+            N.Walk(()=>{}, inNode, "Hierarchy", false, (inRoot)=>
+            {
+                N.Connect(inRoot, modified, "Modifier");
+            });
+        }
+        else
+        {
+
+            N.Connect(Pivot.Root, modified, "Modifier");
+        }
+
+        let leaves = [];
+        let gatherUp = n => N.Connect(modified, n, "ModifyUp");
         let gatherDown = n =>
         {
             N.Connect(modified, n, "ModifyDown");
             N.Step(n, "Hierarchy").length == 0 ?  leaves.push(n) : null;
         };
-        let gatherOut = n => 
-        {
-            N.Connect(modified, n, "ModifyOut");
-        };
+        let gatherOut = n => N.Connect(modified, n, "ModifyOut");
 
         N.ID.Walk++;
         inNode.ID.Walk = N.ID.Walk;
@@ -294,6 +321,7 @@ var Pivot =
         N.Disconnect(modifier, null, "ModifyDown");
         N.Disconnect(modifier, null, "ModifyOut");
         N.Disconnect(modifier, null, "ModifyAt");
+        N.Disconnect(null, modifier, "Modifier");
     }
 };
 </script>
@@ -313,15 +341,13 @@ Pivot.Init([
     ["#6", "a", "short", 0],
     ["#7", "b", "short", 7],
 ]);
-let pivotRoot1 = Pivot.Create([1, 2], [3]);
-//let pivotRoot2 = Pivot.Create([2, 1], [3]);
-//let pivots = [pivotRoot1, pivotRoot2];
-let pivots = [pivotRoot1];
+Pivot.Create([1, 2], [3]);
 
 let AddNewPivot = () =>
 {
-    pivots.push(Pivot.Create([2, 1], [3]));
-}
+    Pivot.Create([2], [3]);
+    Render();
+};
 
 let ElNode = ({node, depth}) =>
 {
@@ -405,22 +431,37 @@ let ElNode = ({node, depth}) =>
     ]);
 };
 let ElPivot = ({pivot}) =>
-{
+{   
     return h("div", {style:{display:"inline-block", width:"500px"}}, [
+        h(ElModifiers, {node:pivot}),
         h(ElNode, {node:pivot, depth:0})
+    ]);
+};
+let ElModifiers = ({node}) =>
+{
+    let modifiers = N.Step(node, "Modifier") || [];
+
+    return h("div", null, [
+        h("strong", null, "modifiers"),
+        ...modifiers.map( m => h("span", {onClick:e=>
+        {
+            Pivot.Unmodify(N.Step(m, "ModifyAt")[0]);
+            Render();
+        }
+        }, "modifier"))
     ]);
 };
 let ElRoot = props =>
 {
     return h("div", null, [
         h("h3", null, "tree view"),
+        h(ElModifiers, {node:Pivot.Root}),
         h("button", { onClick:e=>
         {
             AddNewPivot();
-            Render();
         }
         }, "add new pivot"),
-        ...pivots.map(pivot=>h(ElPivot, {pivot}))
+        ...N.Step(Pivot.Root, "Pivot").map(pivot=>h(ElPivot, {pivot}))
     ])
 };
 let Render = () => render(h(ElRoot), document.querySelector("#app"));
