@@ -40,24 +40,27 @@ var N =
     {
         let remove = (inArray, inMatch) => inArray.findIndex( (inMember, inIndex, inArray) => (inMember === inMatch) ? inArray.splice(inIndex, 1) : false );
 
+        // if no specific child was passed
         if(inNodeMinor === null)
         {
+            // get all the children
             let check = N.Step(inNodeMajor, inKey);
             if(!check){ return; }
-            check.forEach( inLoopNode => 
-            {
-                if(inLoopNode.Link[inKey].Get.length == 1)
-                {
-                    // we're about to delete the last get reference on a minor node, just purge the key entirely
-                    delete inLoopNode.Link[inKey];
-                }
-                else
-                {
-                    remove( inLoopNode.Link[inKey].Get, inNodeMajor);
-                }
 
+            // go down to each child ...
+            check.forEach( inNodeMinor => 
+            {
+                let connections = inNodeMinor.Link[inKey];
+                remove( connections.Get, inNodeMajor); // ... and remove any reference to the parent
+
+                // if after the remove operation, this child has no connections on inKey, scrub the key
+                if(!connections.Set.length && !connections.Get.length)
+                {
+                    delete inNodeMinor.Link[inKey];
+                }
             });
-            // we just wiped out all set, if get is empty we can purge the key from major
+
+            // we just wiped out all outgoing connections to the parent, if incoming connections are empty too we can purge the key there as well
             if(inNodeMajor.Link[inKey].Get.length == 0)
             {
                 delete inNodeMajor.Link[inKey];
@@ -65,20 +68,27 @@ var N =
             return;
         }
 
+        // if no specific parent was passed
         if(inNodeMajor === null)
         {
-            inNodeMinor.Link[inKey].Get.forEach( inLoopNode => 
+            // get all the parents
+            let check = N.Step(inNodeMinor, inKey, false);
+            if(!check){ return; }
+            
+            // go up to each parent ...
+            check.forEach( inNodeMajor => 
             {
-                if(inLoopNode.Link[inKey].Set.length == 1)
+                let connections = inNodeMajor.Link[inKey];
+                remove( connections.Set, inNodeMinor); // ... and remove any reference to the child
+                
+                // if after the remove operation, this parent has no connections on inKey, scrub the key
+                if( !connections.Set.length && !connections.Get.length )
                 {
-                    delete inLoopNode.Link[inKey];
-                }
-                else
-                {
-                    remove( inLoopNode.Link[inKey].Set, inNodeMinor);
+                    delete inNodeMajor.Link[inKey];
                 }
             });
-            // we just wiped out all get, if set is empty we can purge the key from minor
+
+            // we just wiped out all incoming connections to the child, if outgoing connections are empty too we can purge the key there as well
             if(inNodeMinor.Link[inKey].Set.length == 0)
             {
                 delete inNodeMinor.Link[inKey];
@@ -86,7 +96,7 @@ var N =
             return;
         }
 
-
+        // if a specific parent and child were passed
         if(inNodeMajor.Link[inKey].Set.length == 1)
         {
             delete inNodeMajor.Link[inKey];
@@ -110,7 +120,7 @@ var N =
         let connectionGroup = inNode.Link[inKey];
         if(!connectionGroup)
         {
-            if(inForceCreate)
+            if(inForceCreate === true)
             {
                 inNode.Link[inKey] = connectionGroup = {Get:[], Set:[]};
             }
@@ -262,24 +272,24 @@ var Pivot =
     {
         N.ID.Walk++;
         
-        let pivotRoot = N.Create({Leaves:Pivot.Leaves});
+        let pivotRoot = N.Create({Label:"Pivot Root", Leaves:Pivot.Leaves});
         N.Connect(Pivot.Root, pivotRoot, "Pivot");
         return Pivot.Pivot(pivotRoot, inPivotIndicies, inSumIndicies);
     },
     Delete(inRoot)
     {
-        N.ID.Walk++;
-
-        let scan = n =>
+        let check = N.Step(inRoot, "Modifier");
+        if(check)
         {
-
-        };
-
-        N.Walk(scan, inRoot, "Hierarchy")
+            while(check.length>0)
+            {
+                Pivot.Unmodify(check[0]);
+            }
+        }
     },
     Modify(inNode)
     {
-        let modified = N.Create({});
+        let modified = N.Create({Label:"Modifier"});
         N.ID.Walk++;
         if(N.Step(inNode, "Hierarchy").length)
         {
@@ -290,7 +300,6 @@ var Pivot =
         }
         else
         {
-
             N.Connect(Pivot.Root, modified, "Modifier");
         }
 
@@ -313,15 +322,13 @@ var Pivot =
 
         return modified;
     },
-    Unmodify(inNode)
+    Unmodify(inModifier)
     {
-        let modifier = N.Step(inNode, "ModifyAt", false)[0];
-
-        N.Disconnect(modifier, null, "ModifyUp");
-        N.Disconnect(modifier, null, "ModifyDown");
-        N.Disconnect(modifier, null, "ModifyOut");
-        N.Disconnect(modifier, null, "ModifyAt");
-        N.Disconnect(null, modifier, "Modifier");
+        N.Disconnect(inModifier, null, "ModifyUp");
+        N.Disconnect(inModifier, null, "ModifyDown");
+        N.Disconnect(inModifier, null, "ModifyOut");
+        N.Disconnect(inModifier, null, "ModifyAt");
+        N.Disconnect(null, inModifier, "Modifier");
     }
 };
 </script>
@@ -412,7 +419,7 @@ let ElNode = ({node, depth}) =>
         className:"Icon Modify remove",
         onClick:e=>
         {
-            Pivot.Unmodify(node);
+            Pivot.Unmodify(N.Step(node, "ModifyAt", false)[0]);
             Render();
         }
     }, "Unmodify");
@@ -433,6 +440,7 @@ let ElNode = ({node, depth}) =>
 let ElPivot = ({pivot}) =>
 {   
     return h("div", {style:{display:"inline-block", width:"500px"}}, [
+        h("button", {onClick:e=>{Pivot.Delete(pivot);Render();}}, "delete?"),
         h(ElModifiers, {node:pivot}),
         h(ElNode, {node:pivot, depth:0})
     ]);
@@ -445,7 +453,7 @@ let ElModifiers = ({node}) =>
         h("strong", null, "modifiers"),
         ...modifiers.map( m => h("span", {onClick:e=>
         {
-            Pivot.Unmodify(N.Step(m, "ModifyAt")[0]);
+            Pivot.Unmodify(m);
             Render();
         }
         }, "modifier"))
